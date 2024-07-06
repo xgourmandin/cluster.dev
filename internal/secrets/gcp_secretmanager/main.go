@@ -1,26 +1,25 @@
-package aws
+package gcp_secretmanager
 
 import (
 	"fmt"
 	"github.com/apex/log"
 	"github.com/shalb/cluster.dev/internal/config"
 	"github.com/shalb/cluster.dev/internal/project"
-	"github.com/shalb/cluster.dev/pkg/aws"
 	"github.com/shalb/cluster.dev/pkg/executor"
+	"github.com/shalb/cluster.dev/pkg/gcp"
 	"github.com/shalb/cluster.dev/pkg/utils"
 	"gopkg.in/yaml.v3"
 	"os"
 )
 
-const secretmanagerKey = "aws_secretmanager"
-
-type smDriver struct{}
+const secretmanagerKey = "gcp_secretmanager"
 
 type secretmanagerSpec struct {
-	Region     string      `yaml:"region"`
-	SecretName string      `yaml:"aws_secret_name"`
+	SecretName string      `yaml:"gcp_secret_name"`
 	Data       interface{} `yaml:"secret_data,omitempty"`
 }
+
+type smDriver struct{}
 
 func (s *smDriver) Read(rawData []byte) (name string, data interface{}, err error) {
 	secretSpec, err := utils.ReadYAML(rawData)
@@ -29,30 +28,30 @@ func (s *smDriver) Read(rawData []byte) (name string, data interface{}, err erro
 	}
 	name, ok := secretSpec["name"].(string)
 	if !ok {
-		err = fmt.Errorf("aws_secretmanager: secret must contain string field 'name'")
+		err = fmt.Errorf("gcp_secretmanager: secret must contain string field 'name'")
 		return
 	}
 	sp, ok := secretSpec["spec"].(map[string]interface{})
 	if !ok {
-		err = fmt.Errorf("aws_secretmanager: secret must contain field 'spec'")
+		err = fmt.Errorf("gcp_secretmanager: secret must contain field 'spec'")
 		return
 	}
 	specRaw, err := yaml.Marshal(sp)
 	if err != nil {
-		err = fmt.Errorf("aws_secretmanager: can't parse secret '%v' spec %v", name, err)
+		err = fmt.Errorf("gcp_secretmanager: can't parse secret '%v' spec %v", name, err)
 		return
 	}
 	var spec secretmanagerSpec
 	err = yaml.Unmarshal(specRaw, &spec)
 	if err != nil {
-		err = fmt.Errorf("aws_secretmanager: can't parse secret '%v' spec %v", name, utils.ResolveYamlError(specRaw, err))
+		err = fmt.Errorf("gcp_secretmanager: can't parse secret '%v' spec %v", name, utils.ResolveYamlError(specRaw, err))
 		return
 	}
-	if spec.Region == "" || spec.SecretName == "" {
-		err = fmt.Errorf("aws_secretmanager: can't parse secret '%v', fields 'spec.region' and 'spec.secret_name' are required", name)
+	if spec.SecretName == "" {
+		err = fmt.Errorf("gcp_secretmanager: can't parse secret '%v', field 'spec.gcp_secret_name' is required", name)
 		return
 	}
-	data, err = aws.GetSecret(spec.Region, spec.SecretName)
+	data, err = gcp.GetSecret(spec.SecretName)
 	if err != nil {
 		return "", nil, err
 	}
@@ -94,12 +93,12 @@ func (s *smDriver) Create(files map[string][]byte) error {
 		return fmt.Errorf("create  secret: %v", err.Error())
 	}
 	if len(files) != 1 {
-		return fmt.Errorf("create sops secret: expected 1 file, received %v", len(files))
+		return fmt.Errorf("create gcp secret: expected 1 file, received %v", len(files))
 	}
 	for fn, data := range files {
 		filename, err := utils.SaveTmplToFile(fn, data)
 		if err != nil {
-			return fmt.Errorf("create sops secret: %v", err.Error())
+			return fmt.Errorf("create gcp secret: %v", err.Error())
 		}
 		editor := os.Getenv("EDITOR")
 		if editor == "" {

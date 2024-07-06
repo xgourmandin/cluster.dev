@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/shalb/cluster.dev/pkg/utils"
 	"reflect"
 
 	"github.com/apex/log"
@@ -46,38 +47,15 @@ func GetSecret(region string, secretName string) (interface{}, error) {
 		}
 		secretData = string(decodedBinarySecretBytes[:len])
 	}
-	parseCheck := []interface{}{}
-	errSliceCheck := json.Unmarshal([]byte(secretData), &parseCheck)
 
-	parsed := map[string]interface{}{}
-	err = json.Unmarshal([]byte(secretData), &parsed)
-	if err != nil {
-		if errSliceCheck != nil {
-			log.Debugf("Secret '%v' is not JSON, creating raw data", secretName)
-			return secretData, nil
-		}
-		return nil, fmt.Errorf("aws get secret: JSON secret must be a map, not array")
-	}
-	return parsed, nil
+	return utils.ParseSecretData(secretData, secretName)
 }
 
 func CreateSecret(region string, secretName string, secretData interface{}) (err error) {
 
-	kind := reflect.TypeOf(secretData).Kind()
-	var secretDataStr string
-
-	if kind == reflect.Map {
-		secretDataByte, err := json.Marshal(secretData)
-		if err != nil {
-			return err
-		}
-		secretDataStr = string(secretDataByte)
-	} else {
-		secretDataStr = fmt.Sprintf("%v", secretData)
-	}
-
-	if kind == reflect.Slice {
-		return fmt.Errorf("create secret: array is not allowed")
+	secretDataStr, err := utils.MarshallSecretData(secretData)
+	if err != nil {
+		return
 	}
 
 	svc := secretsmanager.New(session.New(),
